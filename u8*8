@@ -1,3 +1,0 @@
-	    [64->u8*8 (lambda (num)
-	(bytevector-copy! (64->u8*8 length-to-pad) 0 output-msg pad-0 8))))
-(define (process-512bits block);;take a 512 bits block as a 64-long bytevector and process it to get the final A, B, C, D
