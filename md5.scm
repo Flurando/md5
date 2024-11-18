@@ -49,71 +49,25 @@
 	  [z (bytevector->u8-list Z)])
       (u8-list->bytevector (map byteI X Y Z)))))
 
-;;;this function despirately need rewriting because using int to calculate stuff is can lead to stackoverflow even for the shortest padding(64 2s). Try to implement this pad function and the later logic of the main rotation calculation to use bytevectors instead.
-(define (padded msg);;we assume msg as a byte-vector and its length is a multiple of 8, so we can edit it byte by byte
-  (let* ([msg-bytes (bytevector-length msg)]
-					;to calc how many bytes are needed in the padded msg
-					;1, msg modular 64
-					;2, we need (msg-bytes + (64 - remainder)) bytes in output
-					;3, however, if (64 - remainder) <= 8, we have to add another 64
-	 [total-padding-bytes (let ([remainder (- 64 (floor-remainder msg-bytes 64))])
-				(display "remainder: ")(display remainder)
-				(newline)
-				(if (<= remainder 8) (begin (display "if is true!")(newline) (+ remainder 64))
-				    (begin (display "if is false!")(newline)
-					   remainder)))]
-	 [full-length (+ msg-bytes total-padding-bytes)]
-	 [output-msg (make-bytevector full-length)])
-    (display "output-msg: ")(display output-msg)(newline)
-    (display "msg-bytes: ")(display msg-bytes)
-    (newline)
-    (display "total-padding-bits: ")(display total-padding-bytes)
-    (newline)
-    (display "output-msg length: ")(display (+ msg-bytes total-padding-bytes))
-    (newline)
-    (bytevector-copy! msg 0 output-msg 0 msg-bytes)
-    (let ([pad-1 msg-bytes]
-	  [pad-0 (+ msg-bytes (- total-padding-bytes 8))])
-      (display "now we are feeding ")(display msg-bytes)(display " as the index")
-      (newline)
-      (display "output-msg: ")(display output-msg)(newline)
-      (bytevector-u8-set! output-msg msg-bytes #x80)
-      (display "output-msg: ")(display output-msg)(newline)
-      (bytevector-fill! output-msg 0 (+ 1 pad-1) pad-0)
-      (display "output-msg: ")(display output-msg)(newline)
-      (let* ([length-to-pad (logand (* msg-bytes 8) (- (expt 2 64) 1))]
-	     [bv ((lambda (num)
-		    (display "the program flag [1]")
-		    (let ([output (make-bytevector 8)]
-			  [full-mask (- (expt 2 64) 1)])
-		      (display "output: ")(display output)(newline)
-		      (display "full-mask")(display full-mask)(newline)
-		      (let loop ([n num] [index 0] [mask-length 56])
-			(if (<= index 7)
-			    (begin
-			      (display "this round, n: ")(display n)(newline)
-			      (display "index: ")(display index)(newline)
-			      (display "mask-length: ")(display mask-length)(newline)
-			      (let ([mask (- (expt 2 mask-length) 1)])
-				(display "output: ")(display output)(newline)
-				(display "(- full-mask mask): ")(display (- full-mask mask))(newline)
-				(display "future logand n (- full-mask mask): ")(display (logand n (- full-mask mask)))(newline)
-				(bytevector-u8-set! output
-						    index
-					            (ash (logand n (- full-mask mask)) (- mask-length)))
-				(display "finished round")(newline)
-				(unless (< mask-length 0) (begin (display "loop!")(newline) (loop (logand n mask) (+ index 1) (- mask-length 8))))))
-			    (begin (display "index is >7 now! out of looping")(newline))))
-		      (display "going to return output soon")(newline)
-		      output)) length-to-pad)])
-	(display "going on...")(newline)
-	(display "bv: ")(display bv)(newline)
-	(display "(- full-length 8): ")(display (- full-length 8))(newline)
-	(bytevector-copy! bv 0 output-msg (- full-length 8) 8)
-	(display "copy passed!")(newline)
-	(display "output-msg: ")(display output-msg)(newline)))
-  output-msg))
-
+(define (padded msg)
+  (let* ([msg-length (bytevector-length msg)]
+	 [remainder (floor-remainder 64 msg-length)]
+	 [total-padding-bytes (if (<= remainder 8) (+ 64 remainder)
+				  remainder)]
+	 [total-length (+ msg-length total-padding-bytes)]
+	 [output-msg (make-bytevector total-length 0)])
+    (bytevector-u8-copy! msg 0 output-msg 0 msg-length)
+    (let ([msg-length-binary (integar-length msg-length)])
+      (bytevector-u8-set! output-msg (- total-length 8) (logand (ash msg-length-binary 56) #xFF))
+      (bytevector-u8-set! output-msg (- total-length 7) (logand (ash msg-length-binary 48) #xFF))
+      (bytevector-u8-set! output-msg (- total-length 6) (logand (ash msg-length-binary 40) #xFF))
+      (bytevector-u8-set! output-msg (- total-length 5) (logand (ash msg-length-binary 32) #xFF))
+      (bytevector-u8-set! output-msg (- total-length 4) (logand (ash msg-length-binary 24) #xFF))
+      (bytevector-u8-set! output-msg (- total-length 3) (logand (ash msg-length-binary 16) #xFF))
+      (bytevector-u8-set! output-msg (- total-length 2) (logand (ash msg-length-binary 8) #xFF))
+      (bytevector-u8-set! output-msg (- total-length 1) (logand msg-length-binary #xFF)))
+    output-msg))
+      
 (define T
   (let loop ([n 1])
     (if (= n 65) '()
@@ -152,17 +106,14 @@
 		 [head (ash (- num tail) 8)])
 	    (append (loop head) (list tail)))))))
 
-(define-syntax md5+
+(define-syntax md5+;;need [rewrite] to treat n1 n2... as bytevectors
   (syntax-rules ()
     [(_ n1 n2 ...)
      (floor-remainder (+ n1 n2 ...) (expt 2 32))]))
 
-(define md5<<<
+(define md5<<<;this is only intended for n1 which is a 32bit representable int
   (lambda (n1 n2)
-    (let* ([mask (ash (- (expt 2 n2) 1) (- 32 n2))]
-	   [head (logand n1 mask)]
-	   [n (ash (- n1 head) n2)])
-      (+ n head))))
+    (logior (ash n1 n2) (ash n1 (- n2 32)))))
 
 ;;;a = b + ((a + F(b,c,d) + X[k] + T[i]) <<< s).
 (define-syntax round-1!
