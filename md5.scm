@@ -1,102 +1,14 @@
 (use-modules (rnrs bytevectors) (scheme base))
 
-(define A0 (uint-list->bytevector '(#x01 #x23 #x45 #x67) 'little 8))
-(define B0 (uint-list->bytevector '(#x89 #xab #xcd #xef) 'little 8))
-(define C0 (uint-list->bytevector '(#xfe #xbc #xda #x98) 'little 8))
-(define D0 (uint-list->bytevector '(#x76 #x54 #x32 #x10) 'little 8))
+(load "four-initial-words.scm")
 
-(define F
-  (lambda (X Y Z)
-    (logior (logand X Y) (logand (lognot X) Z))))
+(load "four-actions-on-words-as-u32.scm")
 
-(define G
-  (lambda (X Y Z)
-    (logior (logand X Z) (logand Y (lognot Z)))))
+(load "padding-proc.scm")
 
-(define H
-  (lambda (X Y Z)
-    (logxor X Y Z)))
+(load "T.scm")
 
-(define I
-  (lambda (X Y Z)
-    (logxor Y (logior X (lognot Z)))))
-
-#!
-(define F
-  (lambda (X Y Z)
-    (let ([x (bytevector->u8-list (num->word X))]
-	  [y (bytevector->u8-list (num->word Y))]
-	  [z (bytevector->u8-list (num->word Z))])
-      (u8-list->bytevector (map byteF X Y Z)))))
-
-(define G
-  (lambda (X Y Z)
-    (let ([x (bytevector->u8-list (num->word X))]
-	  [y (bytevector->u8-list (num->word Y))]
-	  [z (bytevector->u8-list (num->word Z))])
-      (u8-list->bytevector (map byteG X Y Z)))))
-
-(define H
-  (lambda (X Y Z)
-    (let ([x (bytevector->u8-list (num->word X))]
-	  [y (bytevector->u8-list (num->word Y))]
-	  [z (bytevector->u8-list (num->word Z))])
-      (u8-list->bytevector (map byteH X Y Z)))))
-
-(define I
-  (lambda (X Y Z)
-    (let ([x (bytevector->u8-list (num->word X))]
-	  [y (bytevector->u8-list (num->word Y))]
-	  [z (bytevector->u8-list (num->word Z))])
-      (u8-list->bytevector (map byteI X Y Z)))))
-!#
-
-(define (padded msg);tested for #vu8() and #vu8(1 2 3)
-  (let* ([msg (bytevector-copy msg)]
-	 [msg-length (bytevector-length msg)]
-	 [remainder (if (zero? msg-length)
-			0
-			(floor-remainder msg-length 64))]
-	 [total-padding-bytes (if (>= remainder 56) (- 128 remainder)
-				  (- 64 remainder))]
-	 [total-length (+ msg-length total-padding-bytes)]
-	 [output-msg (make-bytevector total-length 0)])
-    (display "padded is called!")(newline)
-    (bytevector-copy! msg 0 output-msg 0 msg-length)
-    (bytevector-u8-set! output-msg msg-length 128)
-    (let ([msg-length-binary (integer-length msg-length)])
-      (bytevector-u8-set! output-msg (- total-length 8) (logand (ash msg-length-binary 56) #xFF))
-      (bytevector-u8-set! output-msg (- total-length 7) (logand (ash msg-length-binary 48) #xFF))
-      (bytevector-u8-set! output-msg (- total-length 6) (logand (ash msg-length-binary 40) #xFF))
-      (bytevector-u8-set! output-msg (- total-length 5) (logand (ash msg-length-binary 32) #xFF))
-      (bytevector-u8-set! output-msg (- total-length 4) (logand (ash msg-length-binary 24) #xFF))
-      (bytevector-u8-set! output-msg (- total-length 3) (logand (ash msg-length-binary 16) #xFF))
-      (bytevector-u8-set! output-msg (- total-length 2) (logand (ash msg-length-binary 8) #xFF))
-      (bytevector-u8-set! output-msg (- total-length 1) (logand msg-length-binary #xFF)))
-    (display "padding step is over! returning...")(newline)
-    output-msg))
-
-#!
-(define T
-  (let loop ([n 1])
-    (if (= n 65) '()
-	(cons (inexact->exact (floor (* 4294967296 (abs (sin n))))) (loop (+ n 1))))))
-!#
-
-(define T '(3614090360 3905402710 606105819 3250441966 4118548399 1200080426 2821735955 4249261313 1770035416 2336552879 4294925233 2304563134 1804603682 4254626195 2792965006 1236535329 4129170786 3225465664 643717713 3921069994 3593408605 38016083 3634488961 3889429448 568446438 3275163606 4107603335 1163531501 2850285829 4243563512 1735328473 2368359562 4294588738 2272392833 1839030562 4259657740 2763975236 1272893353 4139469664 3200236656 681279174 3936430074 3572445317 76029189 3654602809 3873151461 530742520 3299628645 4096336452 1126891415 2878612391 4237533241 1700485571 2399980690 4293915773 2240044497 1873313359 4264355552 2734768916 1309151649 4149444226 3174756917 718787259 3951481745));already checked the first number is equal to the rfc's
-
-(define bytevector-slice;already checked situations without guards
-  (lambda (chunk index1 index2)
-    ;(display "1")(newline)
-    (let* ([n (- index2 index1)]
-	   [output (make-bytevector n)])
-      ;(display "2")(newline)
-      (let loop ([index index1] [shadow-index 0])
-	;(display "index: ")(display index)(newline)
-	(unless (= index index2)
-	  (bytevector-u8-set! output shadow-index (bytevector-u8-ref chunk index))
-	  (loop (+ index 1) (+ shadow-index 1))))
-      output)))
+(load "bytevector-slice-proc.scm")
 
 (define 512bits->16words;;take a 64 long bytevector and return 16 words, which is 16 4-long bytevectors as a list
   (lambda (chunk)
@@ -113,25 +25,7 @@
 	(if (= n 0) '()
 	    (append (512bits->16words (bytevector-slice padded-msg c (+ 16 c))) (loop (- n 1) (+ 16 c))))))))
 
-(define word->num
-  (lambda (bv)
-    (display "running word->num for bv=")(display bv)(newline)
-    (let ([nl (bytevector->u8-list bv)])
-      (logior (ash (list-ref nl 0) 24)
-	 (ash (list-ref nl 1) 16)
-	 (ash (list-ref nl 2) 8)
-	 (list-ref nl 3)))))
-
-(define num->word;now it returns a list which is not a real word
-  (lambda (num)
-    (display "running num->word for num=")(display num)(newline)
-    (let loop ([num num])
-      (if (<= (integer-length num) 8)
-	  (list num)
-	  (let* ([mask (- (expt 2 8) 1)]
-		 [tail (logand mask num)]
-		 [head (ash (- num tail) -8)])
-	    (append (loop head) (list tail)))))))
+(load "word->num&num->word-like-list.scm")
 
 (define-syntax md5+
   (syntax-rules ()
@@ -143,24 +37,10 @@
     (display "calling md5<<< with ")(display n1)(display " ")(display n2)(newline)
     (logior (ash n1 n2) (ash n1 (- n2 32)))))
 
-;;;a = b + ((a + F(b,c,d) + X[k] + T[i]) <<< s).
-#!
-(define-syntax round-1!
-  (syntax-rules ()
-    [(_ a b c d k s i)
-     (set! a (+ b (md5<<< (md5+ a (F b c d) (bytevector-u8-ref X k) (list-ref T i)) s)))]))
-!#
-
 (define-syntax round-1!
   (syntax-rules ()
     [(_ a b c d k s i X)
-     (let* ([Xk (begin (display "calculating for kth in X")(newline) (bytevector-u8-ref X k))]
-	    [Ti (begin (display "calculating for ith in T")(newline) (list-ref T (- i 1)))]
-	    [Fbcd (begin (display "calculating for (F b c d)")(newline) (F b c d))]
-	    [md5addsum (begin (display "calculating md5+ ...")(newline) (md5+ a Fbcd Xk Ti))]
-	    [shiftedsum (begin (display "calculating md5<<< ...")(newline) (md5<<< md5addsum s))]
-	    [lastsum (begin (display "calculating (+ b ...")(newline) (+ b shiftedsum))])
-       (set! a lastsum))]))
+     (set! a (+ b (md5<<< (md5+ a (F b c d) (bytevector-u8-ref X k) (list-ref T i)) s)))]))
 
 (define-syntax round-2!
   (syntax-rules ()
@@ -331,4 +211,4 @@
     (let ([test-ans (do-md5 (string->utf8 ""))])
       (display "yelling!")
       (newline)
-      (yell-md5))));the calc passed but the answer is wrong:(
+      (yell-md5))));the calc passed without error but the answer is wrong:(
