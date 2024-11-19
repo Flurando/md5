@@ -1,7 +1,7 @@
 (define word->num
   (lambda (bv)
     (display "running word->num for bv=")(display bv)(newline)
-    (let ([nl (bytevector->u8-list bv)])
+    (let ([nl (if (list? bv) bv (bytevector->u8-list bv))])
       (logior (ash (list-ref nl 0) 24)
 	 (ash (list-ref nl 1) 16)
 	 (ash (list-ref nl 2) 8)

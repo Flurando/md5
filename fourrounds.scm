@@ -1,7 +1,7 @@
 (define-syntax round-1!
   (syntax-rules ()
     [(_ a b c d k s i X)
-     (set! a (+ b (md5<<< (md5+ a (F b c d) (bytevector-u8-ref X k) (list-ref T (- i 1))) s)))]))
+     (set! a (+ b (md5<<< (begin (display "running md5+...")(newline)(md5+ a (F b c d) (bytevector-u8-ref X k) (list-ref T (- i 1)))) s)))]))
 
 (define-syntax round-2!
   (syntax-rules ()
