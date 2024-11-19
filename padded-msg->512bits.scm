@@ -1,0 +1,16 @@
+(define padded-msg->512bits
+  (lambda (padded-msg)
+    (display "running padded-msg->512bits")(newline)
+    (display "with value passed in as: ")(display padded-msg)(newline)
+    (let* ([total (/ (bytevector-length padded-msg) 64)]
+	   [ans '()])
+      (display "total: ")(display total)(newline)
+      (display "ans: ")(display ans)(newline)
+      (let loop ([n 0])
+	(display "n: ")(display n)(newline)
+	(unless (= n (bytevector-length padded-msg))
+	  (set! ans (cons (bytevector-copy padded-msg n (+ n 64)) ans))
+	  (display "ans: ")(display ans)(newline)
+	  (loop (+ n 64))))
+      (display "ans: ")(display ans)(newline)
+      ans)))
