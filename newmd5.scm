@@ -96,21 +96,38 @@ end for
 var char digest[16] := a0 append b0 append c0 append d0 // (Output is in little-endian)
 !#
 
+;;module-required (rnrs bytevectors)
+;;usage -> {bytevector-u8-list, bytevector-length, bytevector->uint-list, bytevector-u8-set!, bytevector-copy!, bytevector-u32-set!} (procedure) <in> {pad, listify} (procedure)
+;;
+(use-modules (rnrs bytevectors))
+
+;;syntax-name F
+;;match -> (<$:self:F> B C D)
+;;
 (define-syntax F
   (syntax-rules ()
     [(_ B C D)
      (logior (logand B C) (logand (lognot B) D))]))
 
+;;syntax-name G
+;;match -> (<$:self:G> B C D)
+;;
 (define-syntax G
   (syntax-rules ()
     [(_ B C D)
      (logior (logand B D) (logand C (lognot D)))]))
 
+;;syntax-name H
+;;match -> (<$:self:H> B C D)
+;;
 (define-syntax H
   (syntax-rules ()
     [(_ B C D)
      (logxor B C D)]))
 
+;;syntax-name I
+;;match -> (<$:self:I> B C D)
+;;
 (define-syntax I
   (syntax-rules ()
     [(_ B C D)
@@ -121,24 +138,50 @@ var char digest[16] := a0 append b0 append c0 append d0 // (Output is in little-
 ;;output -> output-bv (bytevector) [(zero? (floor-remainder (bytevector-length output-bv) 64)) => #t]
 ;;
 (define pad
-  (lambda (bv)))
+  (lambda (bv)
+    (let* ([bv-length (bytevector-length bv)]
+	   [original-length (* 8 bv-length)]
+	   
+	   [remainder (floor-remainder bv-length 64)]
+	   [pad-total (if (>= remainder 56) (- 128 remainder) (- 64 remainder))]
+	   [total-length (+ bv-length pad-total)]
+	   [output-bv (make-bytevector total-length 0)]
+	   
+	   [original-length-in-u32-bytevectors (let ([ans (make-bytevector 8)])
+						 (bytevector-u32-set! ans 0 (logand #xFFFFFFFF (ash original-length -8)) (endianness little))
+						 (bytevector-u32-set! ans 1 (logand #xFFFFFFFF original-length) (endianness little))
+						 ans)])
+      
+      (bytevector-copy! bv 0 output-bv)
+      (bytevector-u8-set! output-bv bv-length #x80)
+      (bytevector-copy! original-length-in-u32-bytevectors 0 output-bv (- total-length 2) 2)
+
+      output-bv)))
 
 ;;procedure-name listify
 ;;input -> bv (bytevector) [(zero? (floor-remainder (bytevector-length output-bv) 64)) => #t]
-;;output -> output-lst (list:list:u32) [(positive? (length output-lst)) => #t] [(integer? (length output-lst)) => #t] [(apply and (map (lambda (x) (= 16 (length x))) output-lst)) => #t]
+;;output -> _ (list:list:u32[16])
 ;;
 (define listify
-  (lambda (bv)))
+  (lambda (bv)
+    (let ([bv-as-u32-list (bytevector->uint-list bv (endianness big) 4)])
+      (let ([total-num (/ (length bv-as-u32-list) 16)]
+	    (let loop ([n 0] [lst bv-as-u32-list)
+		       (if (>= n (- total-num 1))
+			   lst
+			   (cons (list-head lst 16) (loop (+ 1 n) (list-tail lst 17)))))))))))
 
 ;;procedure-name process-512bits
-;;input -> X (list;u32) [(= 16 (length lst)) => #t]
+;;input -> X (list;u32[16])
 ;;output -> <$:nil>
 ;;note -> "This function is intended to do the real 64 rounds calculation and update the A B C D in the end, but it doesn't need to loop at all"
 ;;note -> "Just use A B C D T as is"
 ;;caution -> "Due to the internal usage of A B C D T, this function should only be invoked inside procedure md5sum where A B C D T have already been set in the super lexical content"
 ;;
 (define process-512bits
-  (lambda (X)))
+  (lambda (X)
+    (let ([AA A][BB B][CC C][DD D]))))
+      
 
 ;;procedure-name consentrated-128bits
 ;;input -> A B C D (u32)
@@ -172,6 +215,6 @@ var char digest[16] := a0 append b0 append c0 append d0 // (Output is in little-
 	  [s '(7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22, 5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20, 4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23, 6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21)])
       (let* ([padded-bv (pad bv)]
 	     [512bits-word-lists (listify padded-bv)])
-	(map-in-order process-512bits 512bits-word-lists)
+	(for-each process-512bits 512bits-word-lists)
 	(format #f "~32,'0x" (consentrated-128bits A B C D))))))
       
