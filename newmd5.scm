@@ -164,22 +164,11 @@ var char digest[16] := a0 append b0 append c0 append d0 // (Output is in little-
 	   
 	   [original-length-cooked (logand original-length #xFFFFFFFFFFFFFFFF)]
 	   [original-length-bv (uint-list->bytevector (list original-length-cooked) (endianness little) 8)])
-
-      (display "bv-length: ")(display bv-length)(newline)
-      (display "original-length: ")(display original-length)(newline)
-      (display "remainder: ")(display remainder)(newline)
-      (display "pad-total: ")(display pad-total)(newline)
-      (display "total-length: ")(display total-length)(newline)
-      (display "output-bv: ")(display output-bv)(newline)
-      (display "original-length-cooked: ")(display original-length-cooked)(newline)
-      (display "original-length-bv: ")(display original-length-bv)(newline)
       
       (bytevector-copy! bv 0 output-bv 0 bv-length)
       (bytevector-u8-set! output-bv bv-length #x80)
       (bytevector-copy! original-length-bv 0 output-bv (- total-length 8) 8)
 
-      (display "padding finished!")(newline)
-      (display "we end up with padded bv as: ")(display output-bv)(newline)
       output-bv)))
 
 ;;procedure-name listify
@@ -197,10 +186,8 @@ var char digest[16] := a0 append b0 append c0 append d0 // (Output is in little-
 
 ;;procedure-name process-512bits
 ;;input -> X (list;u32[16]) A B C D K <as-is>
-;;output -> <$:nil>
-;;note -> "This function is intended to do the real 64 rounds calculation and update the A B C D in the end but it doesn't need to loop at all"
-;;note -> "Just use A B C D K as is"
-;;caution -> "Due to the internal usage of A B C D K this function should only be invoked inside procedure md5sum where A B C D K have already been set in the super lexical content"
+;;output -> _ (u32[4])
+;;note -> "This function is intended to do the real 64 rounds calculation and return A B C D in the end but it doesn't need to loop at all"
 ;;
 (define process-512bits
   (lambda (X A B C D K s)
@@ -256,16 +243,8 @@ var char digest[16] := a0 append b0 append c0 append d0 // (Output is in little-
 	     [512bits-word-lists (listify padded-bv)]
 	     [words-list-length (length 512bits-word-lists)])
 
-	(display "[md5sum]")(newline)
-	(display "padded-bv: ")(display padded-bv)(newline)
-	(display "512bits-word-lists: ")(display 512bits-word-lists)(newline)
-	(display "words-list-length: ")(display words-list-length)(newline)
-	
 	(do ((index 0 (1+ index)))
 	    ((>= index words-list-length))
-	  
-	  (display "inside <do>!")(newline)
-	  (display "index: ")(display index)(newline)
 	  
 	  (receive (A1 B1 C1 D1) (process-512bits (list-ref 512bits-word-lists index) A B C D K s)
 	    (set! A A1)
