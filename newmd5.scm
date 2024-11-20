@@ -101,10 +101,11 @@ var char digest[16] := a0 append b0 append c0 append d0 // (Output is in little-
 ;;
 (use-modules (rnrs bytevectors))
 
-;;module-required (ice-9 receive)
-;;usage -> receive <in> md5sum
+;;module-required (ice-9 receive) (ice-9 exceptions)
+;;usage -> {receive make-exception-with-message} <in> {md5sum test-suite}
 ;;
 (use-modules (ice-9 receive))
+(use-modules (ice-9 exceptions))
 
 ;;syntax-name F
 ;;match -> (<$:self:F> B C D)
@@ -144,7 +145,8 @@ var char digest[16] := a0 append b0 append c0 append d0 // (Output is in little-
 (define-syntax leftrotate
   (syntax-rules ()
     [(_ num s)
-     (logior (ash num (- s 32)) (ash num s))]))
+     (let ([num (logand num #xFFFFFFFF)])
+       (logior (ash num (- s 32)) (ash num s)))]))
 
 ;;procedure-name pad
 ;;input -> bv (bytevector)
@@ -160,15 +162,24 @@ var char digest[16] := a0 append b0 append c0 append d0 // (Output is in little-
 	   [total-length (+ bv-length pad-total)]
 	   [output-bv (make-bytevector total-length 0)]
 	   
-	   [original-length-in-u32-bytevectors (let ([ans (make-bytevector 8)])
-						 (bytevector-u32-set! ans 1 (logand #xFFFFFFFF (ash original-length -8)) (endianness little))
-						 (bytevector-u32-set! ans 0 (logand #xFFFFFFFF original-length) (endianness little))
-						 ans)])
+	   [original-length-cooked (logand original-length #xFFFFFFFFFFFFFFFF)]
+	   [original-length-bv (uint-list->bytevector (list original-length-cooked) (endianness little) 8)])
+
+      (display "bv-length: ")(display bv-length)(newline)
+      (display "original-length: ")(display original-length)(newline)
+      (display "remainder: ")(display remainder)(newline)
+      (display "pad-total: ")(display pad-total)(newline)
+      (display "total-length: ")(display total-length)(newline)
+      (display "output-bv: ")(display output-bv)(newline)
+      (display "original-length-cooked: ")(display original-length-cooked)(newline)
+      (display "original-length-bv: ")(display original-length-bv)(newline)
       
       (bytevector-copy! bv 0 output-bv 0 bv-length)
       (bytevector-u8-set! output-bv bv-length #x80)
-      (bytevector-copy! original-length-in-u32-bytevectors 0 output-bv (- total-length 2) 2)
+      (bytevector-copy! original-length-bv 0 output-bv (- total-length 8) 8)
 
+      (display "padding finished!")(newline)
+      (display "we end up with padded bv as: ")(display output-bv)(newline)
       output-bv)))
 
 ;;procedure-name listify
@@ -177,12 +188,12 @@ var char digest[16] := a0 append b0 append c0 append d0 // (Output is in little-
 ;;
 (define listify
   (lambda (bv)
-    (let ([bv-as-u32-list (bytevector->uint-list bv (endianness big) 4)])
+    (let ([bv-as-u32-list (bytevector->uint-list bv (endianness little) 4)])
       (let ([total-num (/ (length bv-as-u32-list) 16)])
 	    (let loop ([n 0] [lst bv-as-u32-list])
 		       (if (>= n (- total-num 1))
 			   (list lst)
-			   (cons (list-head lst 16) (loop (+ 1 n) (list-tail lst 17)))))))))
+			   (cons (list-head lst 16) (loop (+ 1 n) (list-tail lst 16)))))))))
 
 ;;procedure-name process-512bits
 ;;input -> X (list;u32[16]) A B C D K <as-is>
@@ -244,11 +255,58 @@ var char digest[16] := a0 append b0 append c0 append d0 // (Output is in little-
       (let* ([padded-bv (pad bv)]
 	     [512bits-word-lists (listify padded-bv)]
 	     [words-list-length (length 512bits-word-lists)])
+
+	(display "[md5sum]")(newline)
+	(display "padded-bv: ")(display padded-bv)(newline)
+	(display "512bits-word-lists: ")(display 512bits-word-lists)(newline)
+	(display "words-list-length: ")(display words-list-length)(newline)
+	
 	(do ((index 0 (1+ index)))
 	    ((>= index words-list-length))
+	  
+	  (display "inside <do>!")(newline)
+	  (display "index: ")(display index)(newline)
+	  
 	  (receive (A1 B1 C1 D1) (process-512bits (list-ref 512bits-word-lists index) A B C D K s)
 	    (set! A A1)
 	    (set! B B1)
 	    (set! C C1)
 	    (set! D D1)))
+
+	(let ([bvA (uint-list->bytevector (list A) (endianness little) 4)]
+	      [bvB (uint-list->bytevector (list B) (endianness little) 4)]
+	      [bvC (uint-list->bytevector (list C) (endianness little) 4)]
+	      [bvD (uint-list->bytevector (list D) (endianness little) 4)])
+	  (set! A (car (bytevector->uint-list bvA (endianness big) 4)))
+	  (set! B (car (bytevector->uint-list bvB (endianness big) 4)))
+	  (set! C (car (bytevector->uint-list bvC (endianness big) 4)))
+	  (set! D (car (bytevector->uint-list bvD (endianness big) 4))))
+	
 	(format #f "~8,'0x~8,'0x~8,'0x~8,'0x" A B C D)))))
+
+;;procedure-name test-suite
+;;input -> <$:nil>
+;;output -> _ (string)
+;;note -> "this is the test function for the overall output"
+;;
+(define test-suite
+  (lambda ()
+    (let ([standard '(("" . "d41d8cd98f00b204e9800998ecf8427e")
+		      ("a" . "0cc175b9c0f1b6a831c399e269772661")
+		      ("abc" . "900150983cd24fb0d6963f7d28e17f72")
+		      ("message digest" . "f96b697d7cb7938d525a2f31aaf161d0")
+		      ("abcdefghijklmnopqrstuvwxyz" . "c3fcd3d76192e4007dfb496cca67e13b")
+		      ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789" . "d174ab98d277d9f5a5611c2c9f419d9f")
+		      ("12345678901234567890123456789012345678901234567890123456789012345678901234567890" . "57edf4a22be3c955ac49da2e2107b67a"))])
+      (for-each (lambda (some-pair)
+		  (display "Now checking: ")
+		  (write some-pair)
+		  (newline)
+		  (let ([my-ans (md5sum (string->utf8 (car some-pair)))])
+		    (display "my answer is: ")
+		    (display my-ans)
+		    (newline)
+		    (if (string=? my-ans (cdr some-pair))
+			(begin (display "Pass! Next!") (newline))
+			(raise-exception (make-exception-with-message "Failed!")))))
+		standard))))
