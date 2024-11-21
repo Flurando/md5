@@ -185,7 +185,7 @@ var char digest[16] := a0 append b0 append c0 append d0 // (Output is in little-
 			   (cons (list-head lst 16) (loop (+ 1 n) (list-tail lst 16)))))))))
 
 ;;procedure-name process-512bits
-;;input -> X (list;u32[16]) A B C D K <as-is>
+;;input -> X (list;u32[16]) A B C D K s <as-is>
 ;;output -> _ (u32[4])
 ;;note -> "This function is intended to do the real 64 rounds calculation and return A B C D in the end but it doesn't need to loop at all"
 ;;
